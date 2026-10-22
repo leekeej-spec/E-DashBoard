@@ -1,5 +1,7 @@
 # E-Dashboard 설계안 (PowerShell + WinForms)
 
+> **현재는 Power Apps 방식으로 바뀌었습니다 → [POWERAPPS.md](POWERAPPS.md).** 아래는 처음 PowerShell 기준으로 쓴 설계안이며, 상태 판정 규칙·기능 목록은 Power Apps 버전에도 그대로 적용됩니다.
+
 EAS 알람 처리용 SharePoint 리스트 2개(`EasDashboard`, `EASDB2`)를 읽어서 보여주는 데스크톱 대시보드입니다.
 처음에는 조회만 하고, 기능은 나중에 플러그인처럼 붙여 나갈 수 있도록 구조를 잡았습니다.
 
