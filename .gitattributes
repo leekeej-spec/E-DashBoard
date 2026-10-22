@@ -1,0 +1,2 @@
+# Batch files keep CRLF so cmd.exe parses them reliably, also when downloaded as raw files.
+*.cmd -text

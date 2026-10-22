@@ -106,6 +106,7 @@ E-DashBoard/
 ├─ plugins/                    드롭인 확장 (*.ps1 → 기능 정의 hashtable 반환)
 ├─ samples/                    Mock용 샘플 JSON (두 리스트)
 ├─ tests/                      Pester: 상태판정 · SRN 정규화 · 에러그룹 · diff
+├─ tools/                      Test-EDashEnvironment.ps1/.cmd: P0 환경 점검 (읽기 전용)
 └─ docs/
 ```
 
@@ -534,7 +535,7 @@ function Set-EDashSpItem {
 
 | 단계 | 범위 | 완료 기준 |
 |---|---|---|
-| **P0 환경 확인** | 12장 확인 사항, REST 테스트 | 두 리스트 JSON 샘플 확보 → `samples/`에 (민감정보 마스킹) |
+| **P0 환경 확인** | 12장 확인 사항, `tools/Test-EDashEnvironment.ps1` 실행 ([TESTING.md](TESTING.md)) | 두 리스트 JSON 샘플 확보 → `samples/`에 (민감정보 마스킹) |
 | **P1 조회 MVP** | 셸, Data 모듈, Mock/Rest Provider, KPI, 그리드, 필터, 상세, 자동 갱신, 설정 파일, Pester | 실제 리스트로 60초 갱신, UI 멈춤 없음 |
 | **P2 모니터링** | AlertWatcher, 트레이 알림, 야간 경보, 이력 CSV, 스냅샷, 내보내기, 정합성 탭, 키오스크 모드 | 신규 위험 발생 시 1분 이내 알림 |
 | **P3 조치** | 쓰기 계층, Ack/메모, 수동 리셋, AlertSent 해제, 메일/Teams 연계, 감사 로그 | 권한 있는 사용자만, 확인 후 반영 |
@@ -544,20 +545,10 @@ function Set-EDashSpItem {
 
 ## 12. 착수 전 확인 사항
 
-1. **SharePoint 종류와 인증 확인.** 회사 PC의 PowerShell 5.1에서 아래를 실행해서 결과를 공유해 주세요(이름 등은 마스킹).
-   - 성공하면 온프레미스 + 통합인증 방식으로 확정합니다.
-   - 401/403이 나면 SharePoint Online(PnP) 방식으로 갑니다.
-   - 결과에 실제 필드 형식(텍스트/날짜/Yes-No/사용자)도 같이 나와서 아래 2~4번이 함께 풀립니다.
-
-   ```powershell
-   $PSVersionTable.PSVersion
-   $site = 'https://share.philips.com/sites/EASalarmhandling'
-   foreach ($l in 'EasDashboard','EASDB2') {
-       Invoke-RestMethod "$site/_api/web/GetList(@a1)/items?@a1='/sites/EASalarmhandling/Lists/$l'&`$top=2" `
-           -UseDefaultCredentials -UseBasicParsing -Headers @{ Accept = 'application/json;odata=nometadata' } |
-           ConvertTo-Json -Depth 5
-   }
-   ```
+1. **SharePoint 종류와 인증 확인.** 회사 PC에서 `tools/Test-EDashEnvironment.ps1`을 실행하고, 생성된 보고서를 공유해 주세요. 실행 방법과 결과 읽는 법은 [TESTING.md](TESTING.md)에 있습니다.
+   - 현재 Windows 계정으로 REST 접근이 되면 온프레미스 + 통합인증(Rest) 방식으로 확정합니다.
+   - `401 Bearer`가 나오면 SharePoint Online(PnP) 방식으로 갑니다.
+   - 보고서에는 두 리스트의 컬럼 형식과 값 형식이 마스킹된 상태로 함께 나옵니다. 그래서 아래 2~4번도 같이 해결되고, 10장 1·2번(중복 SRN, 따옴표)도 실제 데이터로 확인됩니다.
 
 2. **EASDB2 컬럼 목록(내부명).** 지금은 `SystemReferenceNumber`, `AlertSent`만 알고 있습니다.
 3. **에러 컬럼(field_6 ~ field_10)의 값 형식**(시각? 'Yes'? 횟수?)과, `SwitchErrorCode`에서 **8·10·12·14 코드가 어느 컬럼을 갱신하는지**.
