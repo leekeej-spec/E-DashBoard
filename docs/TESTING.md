@@ -133,7 +133,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-EDashEnvironment.
 | `DNS ... FAIL` | 사내망/VPN이 아님 | VPN 연결 후 다시 실행 |
 | `REST sign-in FAIL : HTTP 401` (Bearer 없음) | Windows 인증이 거절됨 | 브라우저로 리스트가 열리는지 확인하고, 사이트가 인트라넷 영역에 등록돼 있는지 확인 |
 | `REST sign-in FAIL : HTTP 401; WWW-Authenticate: Bearer` | SharePoint Online | **오류가 아니라 판정 결과입니다.** 그대로 공유해 주세요 (PnP 방식으로 전환) |
-| `HTTP 403` | 권한 없음 | 사이트 소유자에게 읽기 권한 요청 |
+| `HTTP 403` + DNS 별칭이 `sharepoint.com` | SharePoint Online. 권한 문제가 아니라 토큰 인증이 필요한 것 | 정상적인 판정입니다 ([WARN]). [FLOW-EXPORT.md](FLOW-EXPORT.md)의 파일 방식을 사용 |
+| `HTTP 403` (온프레미스) | 권한 없음 | 사이트 소유자에게 읽기 권한 요청 |
 | `HTTP 407` | 프록시 인증 필요 | 결과 공유 |
 | `redirected to a sign-in page` | ADFS 등 로그인 페이지로 이동함 | 결과 공유 (인증 방식 검토) |
 | `open list FAIL ... 404 List does not exist.` | 리스트 URL 이름이 다름 | 브라우저 주소창의 `/Lists/<이름>/` 부분을 확인한 뒤 `-ListNames`로 지정 |

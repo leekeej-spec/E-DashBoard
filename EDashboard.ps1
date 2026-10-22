@@ -3,6 +3,12 @@
     E-Dashboard: EAS 알람 SharePoint 리스트(EasDashboard, EASDB2) 모니터 (P1 조회 버전)
 
 .DESCRIPTION
+    데이터 원본은 두 가지입니다.
+      File (기본): Power Automate가 두 리스트를 OneDrive의 JSON 파일로 내보내고(docs/FLOW-EXPORT.md),
+                   OneDrive 동기화로 PC에 내려온 파일을 읽습니다. SharePoint Online은 Windows 계정만으로
+                   REST 접근이 안 되기 때문에 이 방식을 씁니다.
+      Rest       : SharePoint REST를 Windows 통합인증으로 직접 호출 (온프레미스 SharePoint용).
+
     두 리스트를 주기적으로 읽어 SRN 단위로 합치고, 상태(위험/Reminder/정상/미매칭)와
     'AllOk 누락 의심'(에러가 StaleHours 이상 갱신되지 않음)을 판정해 보여줍니다.
     SharePoint에는 아무것도 쓰지 않습니다 (읽기 전용).
@@ -11,7 +17,8 @@
     GitHub에서 "Download raw file" 또는 ZIP으로 받으세요 (메모장 복사·붙여넣기 금지).
 
 .EXAMPLE
-    EDashboard.cmd                실제 SharePoint 데이터
+    EDashboard.cmd                실제 데이터 (OneDrive\EDashboard\edash-data.json)
+    EDashboard.cmd -DataFile D:\x\edash-data.json   다른 위치의 데이터 파일
     EDashboard.cmd -Demo          샘플 데이터로 화면 확인 (SharePoint 연결 없이)
     EDashboard.cmd -CheckOnly     화면 없이 한 번 읽고 요약만 출력
 #>
@@ -25,11 +32,21 @@ param(
     [int]    $NightStartHour = 22,
     [int]    $NightEndHour   = 8,
     [string] $DailyReset     = '18:00',
+    [ValidateSet('File', 'Rest')]
+    [string] $Source         = 'File',
+    [string] $DataFile,
+    [int]    $MaxFileAgeMinutes = 15,
     [switch] $Demo,
     [switch] $CheckOnly
 )
 
 $ErrorActionPreference = 'Stop'
+
+if (-not $DataFile) {
+    # OneDriveCommercial = 회사 OneDrive(OneDrive - Philips) 동기화 폴더
+    $oneDrive = @($env:OneDriveCommercial, $env:OneDrive, $env:USERPROFILE, $HOME) | Where-Object { $_ } | Select-Object -First 1
+    $DataFile = Join-Path (Join-Path $oneDrive 'EDashboard') 'edash-data.json'
+}
 
 $Config = @{
     SiteUrl        = $SiteUrl.TrimEnd('/')
@@ -40,6 +57,9 @@ $Config = @{
     NightStartHour = $NightStartHour
     NightEndHour   = $NightEndHour
     DailyReset     = $DailyReset
+    Source         = $Source
+    DataFile       = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($DataFile)
+    MaxFileAgeMinutes = $MaxFileAgeMinutes
     Demo           = [bool]$Demo
 
     # EasDashboard 내부명 매핑 (사용자 컬럼 매핑표 기준)
@@ -110,8 +130,11 @@ $DataCode = {
         if ($Value -is [datetime]) { return $Value.ToString('yyyy-MM-dd HH:mm') }
         if ($Value -is [array])    { return (@($Value | ForEach-Object { ConvertTo-EDashText $_ }) -join ', ') }
         if ($Value -is [System.Management.Automation.PSCustomObject]) {
-            if ($Value.PSObject.Properties['results']) { return ConvertTo-EDashText @($Value.results) }
-            if ($Value.PSObject.Properties['Label'])   { return [string]$Value.Label }
+            if ($Value.PSObject.Properties['results'])     { return ConvertTo-EDashText @($Value.results) }
+            if ($Value.PSObject.Properties['Value'])       { return [string]$Value.Value }        # Power Automate 선택/조회 컬럼
+            if ($Value.PSObject.Properties['DisplayName']) { return [string]$Value.DisplayName }  # Power Automate 사용자 컬럼
+            if ($Value.PSObject.Properties['Label'])       { return [string]$Value.Label }
+            if ($Value.PSObject.Properties['Title'])       { return [string]$Value.Title }
             return '{...}'
         }
         return [string]$Value
@@ -242,6 +265,63 @@ $DataCode = {
         }
     }
 
+    # ----- File 원본: Power Automate가 OneDrive에 내보낸 JSON -----
+    function Read-EDashJsonFile {
+        param([string]$Path)
+        if (-not (Test-Path -LiteralPath $Path)) { throw ('데이터 파일이 없습니다: {0}' -f $Path) }
+        # OneDrive가 쓰는 중이어도 읽을 수 있게 공유 모드로 연다.
+        $fs = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+        try {
+            $reader = New-Object System.IO.StreamReader($fs, [Text.Encoding]::UTF8, $true)
+            $text = $reader.ReadToEnd()
+        } finally {
+            $fs.Dispose()
+        }
+        if (-not $text.Trim()) { throw '데이터 파일이 비어 있습니다 (Flow가 아직 실행되지 않았거나 OneDrive 동기화 중).' }
+        $text = $text -creplace '"Id":', '"Id_":'
+        try { return ($text | ConvertFrom-Json) }
+        catch { throw ('데이터 파일을 읽지 못했습니다 (동기화 중이면 다음 갱신 때 다시 읽습니다): ' + $_.Exception.Message) }
+    }
+
+    # 파일의 항목 속성으로 상세 패널용 컬럼 목록을 만든다 (Power Automate 메타데이터 속성은 제외).
+    function Get-EDashFileColumns {
+        param($Items, $Config)
+        $friendly = @{}
+        foreach ($x in @($Config.DashboardFields) + @($Config.ErrorColumns)) { $friendly[$x.Internal] = $(if ($x.Header) { $x.Header } else { $x.Name }) }
+        $names = New-Object System.Collections.Generic.List[string]
+        foreach ($it in @($Items | Select-Object -First 50)) {
+            foreach ($p in $it.PSObject.Properties) {
+                $n = $p.Name
+                if ($n -match '^[@{]' -or $n.Contains('#') -or $n -in @('ItemInternalId', 'Id_', 'ID')) { continue }
+                if (-not $names.Contains($n)) { $names.Add($n) }
+            }
+        }
+        foreach ($n in $names) {
+            $sample = $null
+            foreach ($it in $Items) { $v = $it.$n; if ($null -ne $v -and "$v" -ne '') { $sample = $v; break } }
+            $isDate = ($sample -is [datetime]) -or ("$sample" -match '^\d{4}-\d\d-\d\dT\d\d:\d\d')
+            [pscustomobject]@{
+                Select   = $n
+                Internal = $n
+                Title    = $(if ($friendly.ContainsKey($n)) { $friendly[$n] } else { $n })
+                Type     = $(if ($isDate) { 'DateTime' } else { 'Text' })
+            }
+        }
+    }
+
+    function Get-EDashFileData {
+        param($Config)
+        $doc = Read-EDashJsonFile $Config.DataFile
+        if (-not $doc.PSObject.Properties['dashboard']) { throw '데이터 파일 형식이 다릅니다 ("dashboard" 항목 없음). docs/FLOW-EXPORT.md의 식을 확인하세요.' }
+        $dash   = @($doc.dashboard | Where-Object { $_ })
+        $alerts = @($doc.alerts | Where-Object { $_ })
+        return @{
+            Dash        = [pscustomobject]@{ Items = $dash;   Columns = @(Get-EDashFileColumns $dash $Config);   Missing = @() }
+            Alert       = [pscustomobject]@{ Items = $alerts; Columns = @(Get-EDashFileColumns $alerts $Config); Missing = @() }
+            GeneratedAt = ConvertTo-EDashKst $doc.generatedAt
+        }
+    }
+
     # ----- DEMO 데이터 (SharePoint 없이 화면 확인용) -----
     function Set-EDashDemoError {
         param($Item, [string]$Field, [datetime]$AtKst)
@@ -326,6 +406,8 @@ $DataCode = {
         $sw = [Diagnostics.Stopwatch]::StartNew()
         if ($Config.Demo) {
             $data = Get-EDashDemoData $Config
+        } elseif ($Config.Source -eq 'File') {
+            $data = Get-EDashFileData $Config
         } else {
             $wanted = @($Config.DashboardFields | ForEach-Object { $_.Internal }) + @($Config.ErrorColumns | ForEach-Object { $_.Internal })
             $data = @{
@@ -448,7 +530,9 @@ $DataCode = {
             Missing      = $missing
             DurationMs   = $sw.ElapsedMilliseconds
             Demo         = [bool]$Config.Demo
-            Accept       = $global:EDashAccept
+            Source       = $(if ($Config.Demo) { 'Demo' } else { $Config.Source })
+            GeneratedAt  = $(if ($Config.Demo) { $now } else { $data.GeneratedAt })
+            Accept       = $(if ($Config.Demo) { 'sample data' } elseif ($Config.Source -eq 'Rest') { $global:EDashAccept } else { $Config.DataFile })
         }
     }
 }
@@ -498,7 +582,8 @@ function Complete-EDashJob {
 # -CheckOnly: 화면 없이 한 번 읽어서 요약 출력 (연결 확인용)
 # ---------------------------------------------------------------------------------------------
 if ($CheckOnly) {
-    Write-Host ('E-Dashboard 연결 확인  {0}  {1}' -f $Config.SiteUrl, $(if ($Demo) { '[DEMO]' } else { '' }))
+    $what = if ($Demo) { '[DEMO]' } elseif ($Source -eq 'File') { $Config.DataFile } else { $Config.SiteUrl }
+    Write-Host ('E-Dashboard 연결 확인  {0}' -f $what)
     $rs = New-EDashWorker
     try {
         $job = Start-EDashJob $rs $Config
@@ -512,6 +597,10 @@ if ($CheckOnly) {
     }
     $sys = @($snap.Systems)
     Write-Host ('{0}건 / 조회 {1}ms / {2}' -f $sys.Count, $snap.DurationMs, $snap.Accept) -ForegroundColor Green
+    if ($snap.Source -eq 'File') {
+        if ($snap.GeneratedAt) { Write-Host ('데이터 생성 {0:yyyy-MM-dd HH:mm:ss} KST ({1:n0}분 전)' -f $snap.GeneratedAt, ($snap.TakenAt - $snap.GeneratedAt).TotalMinutes) }
+        else { Write-Host '데이터 생성 시각(generatedAt)이 파일에 없습니다.' -ForegroundColor Yellow }
+    }
     foreach ($g in ($sys | Group-Object Status)) { Write-Host ('  {0,-9} {1}' -f $g.Name, $g.Count) }
     Write-Host ('  AllOk 누락 의심 {0} / Teams 발송 {1} / 중복 SRN 행 {2}' -f @($sys | Where-Object Stale).Count, @($sys | Where-Object AlertSent).Count, @($sys | Where-Object Duplicate).Count)
     if ($snap.Missing.Count) { Write-Host ('없는 컬럼: ' + ($snap.Missing -join ', ')) -ForegroundColor Yellow }
@@ -619,7 +708,7 @@ function New-EDashLabel {
 
 # ----- 폼 -----
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'E-Dashboard' + $(if ($Demo) { '   [DEMO - 샘플 데이터]' } else { '' })
+$form.Text = 'E-Dashboard' + $(if ($Demo) { '   [DEMO - 샘플 데이터]' } elseif ($Source -eq 'File') { '   ' + $Config.DataFile } else { '   ' + $Config.SiteUrl })
 $form.Size = New-Object System.Drawing.Size(1420, 860)
 $form.MinimumSize = New-Object System.Drawing.Size(900, 500)
 $form.StartPosition = 'CenterScreen'
@@ -1003,11 +1092,30 @@ function Show-EDashSnapshot {
     }
     foreach ($k in $counts.Keys) { if ($script:Tiles.ContainsKey($k)) { $script:Tiles[$k].Value.Text = [string]$counts[$k] } }
 
-    $script:LblConn.Text      = $(if ($Snap.Demo) { '● DEMO 데이터' } else { '● 연결됨' })
+    $messages = New-Object System.Collections.Generic.List[string]
+    if ($Snap.Missing.Count) { $messages.Add('리스트에 없는 컬럼: ' + ($Snap.Missing -join ', ')) }
     $script:LblConn.ForeColor = $Theme.Good
-    $script:LblUpdated.Text   = '갱신 {0:HH:mm:ss} KST (조회 {1:n1}초)' -f $Snap.TakenAt, ($Snap.DurationMs / 1000)
-    if ($Snap.Missing.Count) { $script:StatusMsg.Text = '리스트에 없는 컬럼: ' + ($Snap.Missing -join ', ') }
-    else                     { $script:StatusMsg.Text = '' }
+    if ($Snap.Source -eq 'Demo') {
+        $script:LblConn.Text    = '● DEMO 데이터'
+        $script:LblUpdated.Text = '갱신 {0:HH:mm:ss} KST' -f $Snap.TakenAt
+    } elseif ($Snap.Source -eq 'File') {
+        $script:LblConn.Text = '● 파일 데이터'
+        if ($Snap.GeneratedAt) {
+            $age = $Snap.TakenAt - $Snap.GeneratedAt
+            $script:LblUpdated.Text = '데이터 {0:HH:mm:ss} KST ({1} 전) · 읽음 {2:HH:mm:ss}' -f $Snap.GeneratedAt, (Format-EDashAge $age), $Snap.TakenAt
+            if ($age.TotalMinutes -gt $script:Config.MaxFileAgeMinutes) {
+                $script:LblConn.Text      = '● 데이터 오래됨'
+                $script:LblConn.ForeColor = $Theme.Bad
+                $messages.Add(('데이터가 {0} 전 것입니다. Power Automate 내보내기 Flow의 실행 기록과 OneDrive 동기화 상태를 확인하세요.' -f (Format-EDashAge $age)))
+            }
+        } else {
+            $script:LblUpdated.Text = '읽음 {0:HH:mm:ss} KST (데이터 생성 시각 없음)' -f $Snap.TakenAt
+        }
+    } else {
+        $script:LblConn.Text    = '● 연결됨'
+        $script:LblUpdated.Text = '갱신 {0:HH:mm:ss} KST (조회 {1:n1}초)' -f $Snap.TakenAt, ($Snap.DurationMs / 1000)
+    }
+    $script:StatusMsg.Text = $messages -join '  |  '
 
     # 알림: 새로 위험이 된 시스템 / 복구된 시스템
     if ($prev -and $script:ChkNotify.Checked) {
@@ -1044,10 +1152,17 @@ function Show-EDashError {
         $script:Detail.Text = (@(
             '데이터를 가져오지 못했습니다.', '',
             "  $Message", '',
-            '확인할 것',
+            '확인할 것'
+        ) + $(if ($script:Config.Source -eq 'File') { @(
+            ('  - 데이터 파일 경로: {0}' -f $script:Config.DataFile),
+            '  - Power Automate 내보내기 Flow를 만들고 실행했는지 (docs\FLOW-EXPORT.md)',
+            '  - OneDrive 동기화가 켜져 있는지 (작업 표시줄의 구름 아이콘)',
+            '  - 파일이 다른 곳에 있으면 EDashboard.cmd -DataFile "경로"'
+        ) } else { @(
             '  - 사내망 또는 VPN에 연결되어 있는지',
             '  - 브라우저에서 EasDashboard 리스트가 열리는지',
-            '  - tools\Test-EDashEnvironment.cmd 로 환경 점검',
+            '  - tools\Test-EDashEnvironment.cmd 로 환경 점검'
+        ) }) + @(
             '  - 화면만 먼저 보려면 EDashboard-Demo.cmd 실행', '',
             ('{0}초 후 자동으로 다시 시도합니다. (F5: 바로 재시도)' -f $script:Config.RefreshSeconds)
         ) -join "`r`n")

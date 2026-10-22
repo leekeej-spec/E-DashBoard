@@ -386,6 +386,16 @@ try {
         $script:Verdict.Charts = 'built-in charting NOT available'
     }
 
+    # The dashboard reads its data file from the synced OneDrive for Business folder.
+    $oneDrive = $env:OneDriveCommercial
+    if ($oneDrive -and (Test-Path -LiteralPath $oneDrive)) {
+        $dataFile = Join-Path (Join-Path $oneDrive 'EDashboard') 'edash-data.json'
+        $fileState = if (Test-Path -LiteralPath $dataFile) { 'data file EDashboard\edash-data.json present' } else { 'data file EDashboard\edash-data.json not created yet' }
+        Out-Check 'OneDrive for Business folder' 'OK' ('"{0}" synced; {1}' -f (Split-Path -Leaf $oneDrive), $fileState)
+    } else {
+        Out-Check 'OneDrive for Business folder' 'WARN' 'not found - sign in to the OneDrive app, or pass -DataFile to the dashboard'
+    }
+
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     } catch { }
@@ -460,8 +470,14 @@ try {
         $e      = $probeError
         $detail = 'HTTP {0}' -f $e.Status
         if ($e.Auth) { $detail += '; WWW-Authenticate: ' + (Limit-Text $e.Auth 80) }
-        if ($e.Status -eq 401 -and "$($e.Auth)" -match 'Bearer') {
-            $hint = 'token sign-in required -> looks like SharePoint Online; the dashboard needs the PnP provider'
+        $state  = 'FAIL'
+        $isSpo  = @($cnames | Where-Object { $_ -match 'sharepoint\.com' }).Count -gt 0
+        if ($isSpo -and $e.Status -in 401, 403) {
+            # SharePoint Online never accepts Windows-only sign-in for REST; this is the expected answer, not a permission problem.
+            $state = 'WARN'
+            $hint  = 'expected for SharePoint Online: REST needs a sign-in token, so the dashboard reads a Power Automate export file instead (docs/FLOW-EXPORT.md)'
+        } elseif ($e.Status -eq 401 -and "$($e.Auth)" -match 'Bearer') {
+            $hint = 'token sign-in required -> looks like SharePoint Online; use the Power Automate export file (docs/FLOW-EXPORT.md)'
         } elseif ($e.Status -eq 401) {
             $hint = 'Windows sign-in rejected; check that the list opens in a browser and the site is in the Local intranet zone'
         } elseif ($e.Status -eq 403) {
@@ -475,7 +491,7 @@ try {
         } else {
             $hint = $e.Message
         }
-        Out-Check $signIn 'FAIL' ($detail + ' - ' + $hint)
+        Out-Check $signIn $state ($detail + ' - ' + $hint)
         if ($e.Body) { Out-Line ('         server said: ' + $e.Body) }
     }
 
@@ -496,7 +512,7 @@ try {
     if ($authOk) {
         $script:Verdict.Provider = 'Rest (Windows integrated sign-in, no extra module)'
     } elseif ($script:Verdict.Hosting -like 'SharePoint Online*') {
-        $script:Verdict.Provider = 'PnP.PowerShell (interactive sign-in)'
+        $script:Verdict.Provider = 'File (Power Automate export to OneDrive, see docs/FLOW-EXPORT.md)'
     } else {
         $script:Verdict.Provider = 'undecided - see FAIL lines'
     }
