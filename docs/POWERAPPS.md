@@ -179,7 +179,7 @@ ClearCollect(
     AddColumns(
         EasTeamsAlarm,
         AKey, Upper(Substitute(Substitute(Substitute(Trim(SystemReferenceNumber), """", ""), " ", ""), Char(10), "")),
-        ASent, Lower(Trim(Text(AlertSent))) in ["true", "yes", "y", "1"]
+        ASent, Lower(Trim("" & AlertSent)) in ["true", "yes", "y", "1"]
     )
 );
 
@@ -196,14 +196,14 @@ ClearCollect(
             SysTxt, SystemName,
             FseTxt, FSE,
             RegionTxt, REGION,
-            E7, !(Lower(Trim(Text(Err7_SupplyWaterHigh))) in ["", "no", "false", "0", "-", "ok"]),
-            E9, !(Lower(Trim(Text(Err9_ReturnWaterHigh))) in ["", "no", "false", "0", "-", "ok"]),
-            E11, !(Lower(Trim(Text(Err11_DeltaTempHigh))) in ["", "no", "false", "0", "-", "ok"]),
-            E13, !(Lower(Trim(Text(Err13_ColdheadGasTempHigh))) in ["", "no", "false", "0", "-", "ok"]),
-            E20, !(Lower(Trim(Text(Err20_Reminder))) in ["", "no", "false", "0", "-", "ok"]),
-            ActiveCnt, Value(Text(ActiveErrorCount)),
-            RemCnt, Value(Text(ReminderCount)),
-            AllOkB, Lower(Trim(Text(AllOk))) in ["true", "yes", "y", "1", "예"],
+            E7, !(Lower(Trim("" & Err7_SupplyWaterHigh)) in ["", "no", "false", "0", "-", "ok"]),
+            E9, !(Lower(Trim("" & Err9_ReturnWaterHigh)) in ["", "no", "false", "0", "-", "ok"]),
+            E11, !(Lower(Trim("" & Err11_DeltaTempHigh)) in ["", "no", "false", "0", "-", "ok"]),
+            E13, !(Lower(Trim("" & Err13_ColdheadGasTempHigh)) in ["", "no", "false", "0", "-", "ok"]),
+            E20, !(Lower(Trim("" & Err20_Reminder)) in ["", "no", "false", "0", "-", "ok"]),
+            ActiveCnt, Value("" & ActiveErrorCount),
+            RemCnt, Value("" & ReminderCount),
+            AllOkB, Lower(Trim("" & AllOk)) in ["true", "yes", "y", "1", "예"],
             AllOkT, AllOkTime,
             ErrT, Coalesce(LastUpdatedErrorTime, LastUpdated),
             StartT, StartMonitoring
