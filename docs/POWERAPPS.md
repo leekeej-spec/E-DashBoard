@@ -559,9 +559,9 @@ ThisItem.SystemReferenceNumber & If(ThisItem.ASent, "    · Teams 발송", "") &
 | FSE가 **사용자(Person)** | `FseTxt, FSE,` | `FseTxt, FSE.DisplayName,` |
 | FSE가 **선택** | `FseTxt, FSE,` | `FseTxt, FSE.Value,` |
 | SiteName / SystemName이 **선택** | `SiteTxt, SiteName,` | `SiteTxt, SiteName.Value,` (SystemName도 같은 방식) |
-| AllOkTime이 **텍스트** | `AllOkT, AllOkTime,` | `AllOkT, DateTimeValue(AllOkTime),` |
-| LastUpdated / LastUpdatedErrorTime이 **텍스트** | `ErrT, Coalesce(LastUpdatedErrorTime, LastUpdated),` | `ErrT, DateTimeValue(Coalesce(LastUpdatedErrorTime, LastUpdated)),` |
-| StartMonitoring이 **텍스트** | `StartT, StartMonitoring` | `StartT, DateTimeValue(StartMonitoring)` |
+| AllOkTime이 **텍스트** | `AllOkT, AllOkTime,` | `AllOkT, DateTimeValue(AllOkTime, "en-US"),` |
+| LastUpdated / LastUpdatedErrorTime이 **텍스트** | `ErrT, Coalesce(LastUpdatedErrorTime, LastUpdated),` | `ErrT, DateTimeValue(Coalesce(LastUpdatedErrorTime, LastUpdated), "en-US"),` |
+| StartMonitoring이 **텍스트** | `StartT, StartMonitoring` | `StartT, DateTimeValue(StartMonitoring, "en-US")` |
 
 수식에서 컬럼 이름에 빨간 밑줄이 생기면 표시 이름이 다른 경우입니다.
 - 해당 위치에 `ThisRecord.`를 입력하면 자동 완성 목록이 나오니, 거기서 실제 이름을 고르세요.

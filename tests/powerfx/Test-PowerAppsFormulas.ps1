@@ -65,9 +65,9 @@ foreach ($m in [regex]::Matches($md, '<!-- fx:(\S+) -->\s*```powerfx\r?\n(.*?)``
 # apply the guide's section-12 variants exactly as written in its table
 $variants = @()
 if ($TextDates) {
-    $variants += , @('AllOkT, AllOkTime,', 'AllOkT, DateTimeValue(AllOkTime),')
-    $variants += , @('ErrT, Coalesce(LastUpdatedErrorTime, LastUpdated),', 'ErrT, DateTimeValue(Coalesce(LastUpdatedErrorTime, LastUpdated)),')
-    $variants += , @('StartT, StartMonitoring', 'StartT, DateTimeValue(StartMonitoring)')
+    $variants += , @('AllOkT, AllOkTime,', 'AllOkT, DateTimeValue(AllOkTime, "en-US"),')
+    $variants += , @('ErrT, Coalesce(LastUpdatedErrorTime, LastUpdated),', 'ErrT, DateTimeValue(Coalesce(LastUpdatedErrorTime, LastUpdated), "en-US"),')
+    $variants += , @('StartT, StartMonitoring', 'StartT, DateTimeValue(StartMonitoring, "en-US")')
 }
 if ($ChoiceRegion) { $variants += , @('RegionTxt, REGION,', 'RegionTxt, REGION.Value,') }
 foreach ($v in $variants) {
