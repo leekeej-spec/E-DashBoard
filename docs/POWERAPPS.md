@@ -25,6 +25,13 @@ Power Apps 수식은 컬럼 형식(텍스트/날짜/선택 등)에 따라 문법
 
 확인 방법: `EasDashboard` 리스트 → 톱니(설정) → **목록 설정** → "열" 표의 **형식**을 봅니다.
 
+> **EASalarmhandling 사이트에서 확인된 실제 형식 (2026-10)**
+> - 한 줄 텍스트: SiteName, SystemName, FSE, REGION, SRN, LastUpdated, AllOkTime, StartMonitoring, LastUpdatedErrorTime, ReminderCount
+> - 예/아니요: Err7 ~ Err20 (5개), AllOk
+> - 숫자: ActiveErrorCount
+> - 날짜 및 시간: LastReminderTime (앱에서는 사용하지 않음)
+> - 날짜 컬럼 4개가 텍스트이고 값이 `10/23/2026 10:46` 같은 미국식이라, 5장 수식의 날짜 3줄은 **12장의 `DateTimeValue(..., "en-US")` 줄로 바꿔서** 써야 합니다.
+
 | 컬럼 (표시 이름) | 기준으로 잡은 형식 | 다르면 |
 |---|---|---|
 | SiteName, SystemName, FSE, REGION | 한 줄 텍스트 | 선택(Choice)·사용자(Person)면 [12장](#12-컬럼-형식이-다를-때) |
@@ -127,7 +134,8 @@ Set(gFilter, "All");
 Set(gLoaded, false);
 Set(gNow, Now());
 Set(gLoadedAt, Now());
-Set(gSelId, Blank())
+Set(gSelId, Blank());
+Set(gConfirm, false)
 ```
 
 ---
@@ -373,7 +381,7 @@ With(
 |---|---|
 | TemplateSize | `64` |
 | Visible | `gFilter <> "Unknown"` |
-| OnSelect | `Set(gSelId, ThisItem.ID)` |
+| OnSelect | `Set(gSelId, ThisItem.ID); Set(gConfirm, false)` |
 | TemplateFill | (아래) |
 
 **Items:**
@@ -569,6 +577,95 @@ ThisItem.SystemReferenceNumber & If(ThisItem.ASent, "    · Teams 발송", "") &
 
 ---
 
+## 12-1. 수동 All OK (선택한 장비 초기화)
+
+상세 패널에서 선택한 장비를 **SharePoint에서 직접 초기화**하는 단추입니다. 18:00 초기화 Flow와 AllOk 메일 처리가 하는 일을 한 장비에 대해서만 합니다.
+
+- **권한:** 단추를 쓰는 사람에게 EasDashboard와 EasTeamsAlarm의 **편집 권한**이 필요합니다.
+- **순서:** All OK 처리 → 확인 / 취소의 2단계로, 실수로 누르는 것을 막습니다.
+
+**바꾸는 값:**
+
+| 리스트 | 컬럼 | 값 |
+|---|---|---|
+| EasDashboard | Err7 ~ Err20 (Yes/No) | `false` |
+| | AllOk (Yes/No) | `true` |
+| | AllOkTime (텍스트) | 지금 시각, `10/23/2026 12:40` 형식 |
+| | StartMonitoring (텍스트) | 비움 |
+| | ActiveErrorCount (숫자) | `0` |
+| | ReminderCount (텍스트) | `"0"` |
+| EasTeamsAlarm | AlertSent (텍스트) | `"false"` (Flow1이 다시 Teams 알림을 보낼 수 있게) |
+
+**배치:** `htmlDetail`의 Height를 `430`으로 줄이고, 아래 YAML을 `Screen1`에 붙여넣습니다.
+
+```yaml
+- btnAllOk:
+    Control: Classic/Button@2.2.0
+    Properties:
+      Fill: =RGBA(40, 160, 80, 1)
+      OnSelect: =Set(gConfirm, true)
+      Text: ="All OK 처리 (수동 초기화)"
+      Visible: =!IsBlank(gSelId) && !gConfirm && LookUp(colSys, ID = gSelId).Status <> "정상"
+      Height: =44
+      Width: =446
+      X: =904
+      Y: =654
+- btnConfirm:
+    Control: Classic/Button@2.2.0
+    Properties:
+      Fill: =RGBA(210, 40, 40, 1)
+      Text: |-
+        ="확인: " & LookUp(colSys, ID = gSelId).SrnText & " 초기화"
+      Visible: =gConfirm
+      Height: =44
+      Width: =300
+      X: =904
+      Y: =654
+      OnSelect: |-
+        =IfError(
+            Patch(
+                EasDashboard,
+                LookUp(EasDashboard, ID = gSelId),
+                {
+                    Err7_SupplyWaterHigh: false,
+                    Err9_ReturnWaterHigh: false,
+                    Err11_DeltaTempHigh: false,
+                    Err13_ColdheadGasTempHigh: false,
+                    Err20_Reminder: false,
+                    AllOk: true,
+                    AllOkTime: Text(Now(), "mm/dd/yyyy hh:mm", "en-US"),
+                    StartMonitoring: "",
+                    ActiveErrorCount: 0,
+                    ReminderCount: "0"
+                }
+            );
+            With(
+                {al: LookUp(colAlert, AKey = LookUp(colSys, ID = gSelId).SrnKey)},
+                If(!IsBlank(al), Patch(EasTeamsAlarm, LookUp(EasTeamsAlarm, ID = al.ID), {AlertSent: "false"}))
+            );
+            Notify("All OK 처리 완료: " & LookUp(colSys, ID = gSelId).SrnText, NotificationType.Success);
+            Set(gConfirm, false);
+            Select(btnLoad),
+            Notify("All OK 처리 실패: " & FirstError.Message, NotificationType.Error);
+            Set(gConfirm, false)
+        )
+- btnCancel:
+    Control: Classic/Button@2.2.0
+    Properties:
+      Fill: =RGBA(150, 150, 150, 1)
+      OnSelect: =Set(gConfirm, false)
+      Text: ="취소"
+      Visible: =gConfirm
+      Height: =44
+      Width: =140
+      X: =1210
+      Y: =654
+```
+
+**YAML 주의:** 한 줄짜리 값 안에 `: `(콜론+공백)이 있으면 붙여넣기가 실패합니다. 그런 값은 위의 `Text: |-`처럼 블록 형식으로 씁니다.
+
+---
+
 ## 13. 저장 · 게시 · 공유
 
 1. **저장**(Ctrl+S) → **게시**
@@ -591,3 +688,8 @@ ThisItem.SystemReferenceNumber & If(ThisItem.ASent, "    · Teams 발송", "") &
 | 시각이 9시간 어긋남 | 그 날짜 컬럼이 텍스트 형식입니다 → 12장 `DateTimeValue` 줄로 바꾸기 |
 | 모든 시스템이 "정상" | 에러 컬럼 이름(`Err7_SupplyWaterHigh` 등)을 확인하세요. 4)번 블록의 E7~E20 줄에서 쓰는 이름입니다 |
 | 다른 사람이 "권한 없음" | 그 사람의 SharePoint 사이트 권한 확인 (앱 공유와 별개) |
+| 단추를 눌러도 아무 반응 없음 | 편집 화면에서는 클릭이 "선택"만 됨 → **F5(미리 보기)** 또는 **Alt+클릭**. 단추에 빨간 ✕가 있으면 수식 오류 |
+| `false// 1) ...` 같은 오류 | 기본값 `false`가 남은 채 붙여넣음 → 수식 칸에서 **Ctrl+A** 후 붙여넣기 |
+| `PA1001 ... PaYaml` 오류 | 수식을 트리 보기에 붙여넣음 → 수식은 **fx 칸**에, YAML만 트리 보기에 |
+| 날짜가 1년 넘게 어긋남 (예: 2027-11-10) | 미국식 날짜를 일/월로 읽음 → `DateTimeValue(..., "en-US")` |
+| `'Boolean'과(와) 일치하지 않습니다` | 예/아니요 컬럼에 글자를 넣음 → `true` / `false` |
