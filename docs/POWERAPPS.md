@@ -393,9 +393,9 @@ Sort(
             true
         ) &&
         (!chkErrors.Value || Status <> "정상") &&
-        (IsEmpty(cbRegion.SelectedItems) || RegionTxt = cbRegion.Selected.Value) &&
-        (IsEmpty(cbFse.SelectedItems) || FseTxt = cbFse.Selected.Value) &&
-        (IsBlank(txtSearch.Text) || txtSearch.Text in SrnText || txtSearch.Text in SiteTxt || txtSearch.Text in SysTxt || txtSearch.Text in FseTxt)
+        (IsBlank(cbRegion.Selected.Value) || RegionTxt = cbRegion.Selected.Value) &&
+        (IsBlank(cbFse.Selected.Value) || FseTxt = cbFse.Selected.Value) &&
+        (IsBlank(Trim(txtSearch.Text)) || Trim(txtSearch.Text) in SrnText || Trim(txtSearch.Text) in SiteTxt || Trim(txtSearch.Text) in SysTxt || Trim(txtSearch.Text) in FseTxt)
     ),
     SortKey
 )
