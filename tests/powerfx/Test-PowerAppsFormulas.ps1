@@ -142,7 +142,7 @@ $rows = @(
     (Row 8 '"710007"' '새봄병원' @{ E7 = '"No"' } 'false' $noDate $noDate $noDate 0 0)
 )
 $engine.UpdateVariable('EasDashboard', (Eval ('Table(' + ($rows -join ",`n") + ')') 'mock EasDashboard'))
-$engine.UpdateVariable('EASDB2', (Eval 'Table({ID:1, SystemReferenceNumber:"710001", AlertSent:"true"},{ID:2, SystemReferenceNumber:"710002", AlertSent:"false"},{ID:3, SystemReferenceNumber:"710003", AlertSent:"false"},{ID:4, SystemReferenceNumber:"710004", AlertSent:"true"},{ID:5, SystemReferenceNumber:"719999", AlertSent:"false"},{ID:6, SystemReferenceNumber:" 710006 ", AlertSent:"TRUE"})' 'mock EASDB2'))
+$engine.UpdateVariable('EasTeamsAlarm', (Eval 'Table({ID:1, SystemReferenceNumber:"710001", AlertSent:"true"},{ID:2, SystemReferenceNumber:"710002", AlertSent:"false"},{ID:3, SystemReferenceNumber:"710003", AlertSent:"false"},{ID:4, SystemReferenceNumber:"710004", AlertSent:"true"},{ID:5, SystemReferenceNumber:"719999", AlertSent:"false"},{ID:6, SystemReferenceNumber:" 710006 ", AlertSent:"TRUE"})' 'mock EasTeamsAlarm'))
 $engine.UpdateVariable('txtSearch', (Eval '{Text: ""}' 'ctl'))
 $engine.UpdateVariable('chkErrors', (Eval '{Value: false}' 'ctl'))
 foreach ($cb in 'cbRegion', 'cbFse') { $engine.UpdateVariable($cb, (Eval '{SelectedItems: Filter(Table({Value: ""}), false), Selected: {Value: If(false, "")}}' 'ctl')) }

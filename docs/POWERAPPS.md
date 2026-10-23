@@ -1,6 +1,6 @@
 # E-Dashboard Power Apps 버전 만들기
 
-SharePoint 리스트 `EasDashboard`, `EASDB2`를 **Power Apps 캔버스 앱**이 직접 읽어서 보여주는 방식입니다.
+SharePoint 리스트 `EasDashboard`, `EASDB2`(표시 이름 **EasTeamsAlarm**)를 **Power Apps 캔버스 앱**이 직접 읽어서 보여주는 방식입니다.
 
 ## 0. 무엇이 달라지나
 
@@ -39,7 +39,7 @@ Power Apps 수식은 컬럼 형식(텍스트/날짜/선택 등)에 따라 문법
 1. https://make.powerapps.com → **+ 만들기 → 빈 앱 → 빈 캔버스 앱**
    - 이름: `E-Dashboard`
    - 형식: **태블릿**
-2. **데이터 추가**(왼쪽 원통 아이콘) → **SharePoint** → 연결 선택 → 사이트 `EASalarmhandling`(`https://share.philips.com/sites/EASalarmhandling`) → **EasDashboard**, **EASDB2** 체크 → 연결
+2. **데이터 추가**(왼쪽 원통 아이콘) → **SharePoint** → 연결 선택 → 사이트 `EASalarmhandling`(`https://share.philips.com/sites/EASalarmhandling`) → **EasDashboard**, **EasTeamsAlarm** 체크 (URL 이름은 `EASDB2`) → 연결
 3. **설정 → 일반 → 데이터 행 제한**: `500` → **`2000`**
    - 두 리스트를 통째로 읽기 때문에 필요합니다. 리스트가 2000건을 넘으면 앱이 경고합니다.
 4. **클래식 컨트롤**을 씁니다 → [2-1](#2-1-클래식-컨트롤-고르기)
@@ -170,14 +170,14 @@ ClearCollect(colPrevCrit, ShowColumns(Filter(colSys, Status = "위험"), SrnKey)
 
 // 2) 최신 데이터
 Refresh(EasDashboard);
-Refresh(EASDB2);
+Refresh(EasTeamsAlarm);
 Set(gNow, Now());
 
 // 3) EASDB2: SRN 정규화(따옴표·공백 제거, 대문자) + Teams 발송 여부
 ClearCollect(
     colAlert,
     AddColumns(
-        EASDB2,
+        EasTeamsAlarm,
         AKey, Upper(Substitute(Substitute(Substitute(Trim(SystemReferenceNumber), """", ""), " ", ""), Char(10), "")),
         ASent, Lower(Trim(Text(AlertSent))) in ["true", "yes", "y", "1"]
     )
@@ -274,7 +274,7 @@ Set(gLoaded, true);
 Set(gLoadedAt, Now())
 ```
 
-> 편집기에서 `EasDashboard`, `EASDB2` 아래에 노란 삼각형(위임 경고)이 보입니다. 데이터 행 제한(2000) 안에서는 정상 동작하므로 무시해도 됩니다.
+> 편집기에서 `EasDashboard`, `EasTeamsAlarm` 아래에 노란 삼각형(위임 경고)이 보입니다. 데이터 행 제한(2000) 안에서는 정상 동작하므로 무시해도 됩니다.
 
 ### tmrRefresh (60초마다 자동 새로고침)
 
